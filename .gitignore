@@ -1,0 +1,5 @@
+.agent/
+ecc-install.json
+node_modules/
+server.log
+.DS_Store
