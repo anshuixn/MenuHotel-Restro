@@ -1394,9 +1394,11 @@ header.scrolled {
    TOUCH DEVICE OPTIMIZATIONS
    ============================================ */
 @media (hover: none) and (pointer: coarse) {
-  /* Disable hover-dependent transforms on touch */
+  /* Prevent sticky hover states, but map the desktop feel to active tap states! */
   .menu-card:hover {
     transform: none;
+    box-shadow: var(--shadow-float);
+    border-color: var(--glass-border);
   }
 
   .gallery-card:hover {
@@ -1423,24 +1425,37 @@ header.scrolled {
     min-height: 44px;
   }
 
-  /* Active states instead of hover states */
+  /* Smooth, premium Active states mimicking desktop hovers */
   .menu-card:active {
-    transform: scale(0.98);
-    transition: transform 0.1s ease;
+    transform: scale(0.96) !important;
+    box-shadow: var(--shadow-hover);
+    border-color: rgba(212, 175, 55, 0.3);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
   .gallery-card:active {
-    transform: scale(0.97);
+    transform: scale(0.95) !important;
+    box-shadow: var(--shadow-hover);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  
+  .cuisine-image-wrapper:active img {
+    transform: scale(1.06) !important;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
   .btn-primary:active {
-    transform: scale(0.96);
+    transform: scale(0.94);
+    box-shadow: var(--shadow-hover);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .btn-outline:active,
   .btn-sm:active {
     background: var(--accent-gold);
     color: var(--bg-dark);
+    transform: scale(0.94);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 

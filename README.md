@@ -51,10 +51,8 @@ A premium, real-time restaurant management web application featuring a minimalis
 
 ### Prerequisites
 
-- **Python 3** (pre-installed on macOS/Linux) — used as a simple local web server
+- **Node.js** (v14 or higher) — required for the Express backend API
 - A modern web browser (Chrome, Firefox, Safari, Edge)
-
-> **No Node.js, no npm, no build tools required.** This is a zero-dependency project.
 
 ### Steps
 
@@ -64,39 +62,52 @@ A premium, real-time restaurant management web application featuring a minimalis
    cd Experiments
    ```
 
-2. **Start the local server:**
+2. **Install dependencies:**
    ```bash
-   python3 -m http.server 3000
+   npm install
    ```
 
-3. **Open in your browser:**
+3. **Start the local server:**
+   ```bash
+   npm start
+   ```
+   *(Behind the scenes, this runs `node server.js`)*
 
-   | Page | URL |
-   |------|-----|
-   | Homepage | [http://localhost:3000](http://localhost:3000) |
-   | Order Page (Table 5) | [http://localhost:3000/order.html?table=05](http://localhost:3000/order.html?table=05) |
-   | Staff Portal | [http://localhost:3000/staff.html](http://localhost:3000/staff.html) |
+4. **Testing on your Mac (Staff View):**
+   The terminal will output the local links. You can click on the `Home Page` link or the `Staff Portal` link:
+   - `http://localhost:3000/staff.html` (Staff Dashboard)
+   - *Sign in using `admin` / `admin` to access the Kanban board.*
 
-4. **To stop the server**, press `Ctrl + C` in the terminal.
+5. **Testing on your Smartphone (Customer View):**
+   To experience the real-time syncing, connect your smartphone to the **same Wi-Fi network** as your Mac.
+   - The terminal will automatically detect and print your Mac's Local IP Address (e.g., `http://192.168.1.5:3000/`).
+   - Open Safari/Chrome on your phone and type that exact link provided by the terminal.
+   - Tap "Order Now" to enter the fast and responsive mobile ordering system!
+   
+6. **Watch the Magic ✨**
+   - Submit a burger order on your Smartphone.
+   - The order will instantly pop up on your Mac's Kanban board.
+   - Click "Start Cooking" on your Mac.
+   - Your Smartphone's Live Status Tracker will instantly update to "Chef is Cooking!"
 
-### Simulating QR Codes
+7. **To stop the server**, press `Ctrl + C` in the terminal.
 
 In a real restaurant, each table would have a QR code linking to:
 ```
 http://yourdomain.com/order.html?table=XX
 ```
-Replace `XX` with the table number (e.g., `01`, `02`, `15`). For local testing, use:
+Replace `XX` with the table number (e.g., `01`, `02`, `15`). For local testing, the terminal will provide a convenient order link like:
 ```
-http://localhost:3000/order.html?table=08
+http://localhost:3000/order.html?table=01
 ```
 
 ---
 
 ## 🌐 Hosting / Deployment
 
-Since this is a **static site** (no backend server needed), it can be deployed for free on any static hosting platform:
+The project now consists of a frontend and a lightweight **Node.js backend**. To deploy it to the internet, you can host the `server.js` file on services like Render, Heroku, or Railway which support Node.js.
 
-### Option 1: GitHub Pages (Free)
+### Option 1: Render / Railway (Free Tier)
 
 1. Push your code to a GitHub repository
 2. Go to **Settings → Pages**
@@ -157,23 +168,23 @@ Experiments/
 
 ## 🔄 How Real-Time Sync Works
 
-Since this is a frontend-only project, real-time sync between the **Order Page** and **Staff Portal** is achieved using the browser's **`localStorage` + `StorageEvent` API**:
+Real-time sync between the **Order Page** and **Staff Portal** is achieved using a **Node.js Express Backend**:
 
-1. Guest places an order → saved to `localStorage` as JSON
-2. Staff portal polls `localStorage` every 1 second
-3. Cross-tab communication via `window.addEventListener('storage', ...)`
-
-> **For production**, replace `localStorage` with **Firebase Firestore** for true multi-device, multi-browser real-time sync.
+1. Guest places an order → sent to the `/api/orders` endpoint via `fetch()`
+2. Backend temporarily stores orders in server memory (or file system)
+3. Staff portal polls the new `/api/orders` endpoint every 2 seconds
+4. Status changes on the Staff Portal ("Start Cooking") immediately reflect on the Customer's mobile device during their next polling cycle.
 
 ---
 
 ## 🛣️ Future Roadmap
 
-- [ ] Migrate to **React + TypeScript** (Vite)
-- [ ] Add **Firebase Firestore** for real-time backend
-- [ ] Implement **staff authentication** (login/logout)
-- [ ] Add **order history** and analytics dashboard
+- [x] Migrate to a real backend API (Node.js/Express)
+- [x] Implement **staff authentication** and employee management (Key-Gated)
 - [x] **Mobile-responsive** optimization
+- [ ] Migrate to **React + TypeScript** (Vite)
+- [ ] Add persistence to the backend (Database like MongoDB or PostgreSQL)
+- [ ] Add **order history** and analytics dashboard
 - [ ] **Payment integration** (Stripe/Razorpay)
 - [ ] **Push notifications** for order status updates
 

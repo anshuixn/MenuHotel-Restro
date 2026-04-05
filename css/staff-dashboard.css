@@ -13,16 +13,16 @@
 
 .kanban-column {
   flex: 0 0 310px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
+  background: rgba(12, 12, 12, 0.85); /* Deep charcoal Antigravity style */
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(212, 175, 55, 0.15); /* Soft gold tint */
   border-radius: 20px;
   display: flex;
   flex-direction: column;
   max-height: 100%;
-  box-shadow: var(--shadow-float);
-  transition: border-color 0.3s ease;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05); /* Premium depth */
+  transition: border-color 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   scroll-snap-align: start;
 }
 
@@ -78,14 +78,14 @@
 
 /* Order Card */
 .order-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--glass-border);
+  background: rgba(22, 22, 22, 0.95);
+  border: 1px solid rgba(212, 175, 55, 0.2);
   border-radius: 14px;
   padding: 1.2rem;
   margin-bottom: 1rem;
   cursor: grab;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.6);
   position: relative;
   overflow: hidden;
 }
@@ -108,9 +108,9 @@
 .order-card:active { cursor: grabbing; }
 
 .order-card:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--shadow-hover);
-  border-color: rgba(212, 175, 55, 0.2);
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(212, 175, 55, 0.05);
+  border-color: rgba(212, 175, 55, 0.5);
 }
 
 .order-card.dragging {

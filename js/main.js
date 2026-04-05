@@ -74,24 +74,25 @@ function initScrollReveals() {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
-        entry.target.classList.add('active');
+        requestAnimationFrame(() => {
+          entry.target.classList.add('active');
+        });
       }
     });
   }, {
-    threshold: 0.15,
-    rootMargin: '0px 0px -60px 0px'
+    threshold: 0.1,
+    rootMargin: '0px 0px -40px 0px'
   });
 
   revealElements.forEach(el => observer.observe(el));
 }
 
-// ---- Parallax on Scroll (disabled on mobile for performance) ----
+// ---- Parallax on Scroll (Optimized for Mobile/Desktop) ----
 function initParallax() {
-  // Skip parallax on touch devices for smoother scrolling
-  if ('ontouchstart' in window && window.innerWidth <= 768) return;
-
   const parallaxEls = document.querySelectorAll('[data-parallax]');
   if (parallaxEls.length === 0) return;
+
+  const isMobile = ('ontouchstart' in window) || (window.innerWidth <= 768);
 
   let ticking = false;
 
@@ -99,7 +100,8 @@ function initParallax() {
     if (!ticking) {
       requestAnimationFrame(() => {
         parallaxEls.forEach(el => {
-          const speed = parseFloat(el.dataset.parallax) || 0.1;
+          // Drastically reduce parallax speed on mobile for a smooth, premium feel without jitter
+          const speed = (parseFloat(el.dataset.parallax) || 0.1) * (isMobile ? 0.3 : 1);
           const rect = el.getBoundingClientRect();
           const center = rect.top + rect.height / 2;
           const offset = (window.innerHeight / 2 - center) * speed;
@@ -109,7 +111,7 @@ function initParallax() {
       });
       ticking = true;
     }
-  });
+  }, { passive: true });
 }
 
 // ---- Floating Food Emoji Particles (reduced on mobile) ----

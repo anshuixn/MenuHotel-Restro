@@ -44,10 +44,98 @@ const menuData = [
   { id: 29, name: "Fresh Lime Soda",  category: "beverages", price: 89,  calories: 60,  image: "./assets/menu/beverages/fresh-lime-soda.png", desc: "Tangy lime juice with soda, cumin salt, and a touch of mint" },
 ];
 
+// ============================================
+// AUDIO & HAPTIC ENGINE
+// ============================================
+const AudioEngine = {
+  ctx: null,
+  init() {
+    if (!this.ctx) {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  playSwoosh() {
+    try {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.3);
+      
+      gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+      
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.3);
+    } catch(e) {}
+  },
+  playChime() {
+    try {
+      this.init();
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.8);
+      
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.8);
+      
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.8);
+    } catch(e) {}
+  },
+  vibrateClick() {
+    if (navigator.vibrate) {
+      navigator.vibrate([20, 30, 20]);
+    }
+  }
+};
+
 let cart = {};
 let tableNumber = "01";
 let currentOrderId = null;
 let statusPollInterval = null;
+
+// --- Agent 4: Vanilla Proxy State Manager ---
+const OrbState = {
+  cartOpen: false,
+  statusOpen: false,
+  orderState: 'none'
+};
+
+const OrbStore = new Proxy(OrbState, {
+  set: (target, key, value) => {
+    if (target[key] !== value) {
+      // Interceptor to ensure mutual exclusivity
+      if (key === 'cartOpen' && value === true) target.statusOpen = false;
+      if (key === 'statusOpen' && value === true) target.cartOpen = false;
+      
+      target[key] = value;
+      
+      if (key === 'cartOpen' || key === 'statusOpen') {
+        handleOrbRender();
+      }
+      if (key === 'orderState') {
+        handleOrbStateStyles(value);
+        if (value === 'cooking' || value === 'ready' || value === 'completed') {
+          AudioEngine.playChime();
+        }
+      }
+    }
+    return true;
+  }
+});
+
+let scrollbarWidth = 0; // For Agent 5
 
 document.addEventListener("DOMContentLoaded", () => {
   // 1. Table Selection — from URL param or dropdown
@@ -73,8 +161,15 @@ document.addEventListener("DOMContentLoaded", () => {
     tableNumber = selector.value;
   });
 
-  // 2. Render Menu
-  renderMenu('all');
+  // 2. Render Menu Based on Parameter (Agent 1 & 2 Routing)
+  let initialFilter = 'all';
+  if (params.has('filter')) {
+    initialFilter = params.get('filter');
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    const targetTab = document.querySelector(`.filter-tab[data-filter="${initialFilter}"]`);
+    if(targetTab) targetTab.classList.add('active');
+  }
+  renderMenu(initialFilter);
 
   // 3. Filter Tabs
   document.querySelectorAll('.filter-tab').forEach(tab => {
@@ -85,14 +180,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // 4. Cart Toggle
-  document.getElementById('cart-btn').addEventListener('click', () => {
-    document.getElementById('cart-panel').classList.toggle('active');
-  });
-
-  document.getElementById('close-cart').addEventListener('click', () => {
-    document.getElementById('cart-panel').classList.remove('active');
-  });
+  // 4. Orb Drawer Interactions (Agent 4 & 5)
+  setupOrbInteractions();
 
   // 5. Checkout
   document.getElementById('checkout-btn').addEventListener('click', submitOrder);
@@ -108,6 +197,166 @@ document.addEventListener("DOMContentLoaded", () => {
     startStatusPolling();
   }
 });
+
+// ============================================
+// Agent 4, 5, 6 & 7: ORB DOM PHYSICS & EVENTS
+// ============================================
+function setupOrbInteractions() {
+  const statusOrb = document.getElementById('status-orb');
+  const cartOrb = document.getElementById('cart-orb');
+  const statusDrawer = document.getElementById('status-drawer');
+  const cartDrawer = document.getElementById('cart-drawer');
+  const backdrop = document.getElementById('orb-backdrop');
+  
+  // Agent 5: Calculate scrollbar width
+  scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+  // Toggle handlers
+  statusOrb.addEventListener('click', () => {
+    AudioEngine.init();
+    OrbStore.statusOpen = true;
+    AudioEngine.playSwoosh();
+  });
+  
+  cartOrb.addEventListener('click', () => {
+    AudioEngine.init();
+    OrbStore.cartOpen = true;
+    AudioEngine.playSwoosh();
+  });
+
+  // Close triggers
+  document.querySelectorAll('.close-drawer').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      if (e.target.dataset.close === 'status') OrbStore.statusOpen = false;
+      if (e.target.dataset.close === 'cart') OrbStore.cartOpen = false;
+    });
+  });
+
+  backdrop.addEventListener('click', () => {
+    OrbStore.statusOpen = false;
+    OrbStore.cartOpen = false;
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      OrbStore.statusOpen = false;
+      OrbStore.cartOpen = false;
+    }
+  });
+
+  // Agent 6: Mobile Fluid Touch (Dual-Directional)
+  setupTouchPhysics(statusDrawer, 'left');
+  setupTouchPhysics(cartDrawer, 'right');
+}
+
+function setupTouchPhysics(drawer, direction) {
+  let startX = 0;
+  let isDragging = false;
+
+  drawer.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    isDragging = true;
+    drawer.style.transition = 'none';
+  }, {passive: true});
+
+  drawer.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.touches[0].clientX - startX;
+    
+    if (direction === 'left' && deltaX < 0) {
+      requestAnimationFrame(() => drawer.style.transform = `translateX(${deltaX}px)`);
+    } else if (direction === 'right' && deltaX > 0) {
+      requestAnimationFrame(() => drawer.style.transform = `translateX(${deltaX}px)`);
+    }
+  }, {passive: true});
+
+  drawer.addEventListener('touchend', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    drawer.style.transition = 'transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
+
+    const deltaX = e.changedTouches[0].clientX - startX;
+    const velocity = Math.abs(deltaX);
+
+    if (direction === 'left' && (deltaX < -80 || velocity > 150)) {
+      OrbStore.statusOpen = false;
+      AudioEngine.vibrateClick();
+    } else if (direction === 'right' && (deltaX > 80 || velocity > 150)) {
+      OrbStore.cartOpen = false;
+      AudioEngine.vibrateClick();
+    } else {
+      drawer.style.transform = ''; // snap back
+    }
+  });
+}
+
+function handleOrbRender() {
+  const statusDrawer = document.getElementById('status-drawer');
+  const cartDrawer = document.getElementById('cart-drawer');
+  const backdrop = document.getElementById('orb-backdrop');
+  const statusOrb = document.getElementById('status-orb');
+  const cartOrb = document.getElementById('cart-orb');
+  
+  const anyOpen = OrbStore.cartOpen || OrbStore.statusOpen;
+
+  // Cart
+  if (OrbStore.cartOpen) {
+    cartDrawer.classList.add('open');
+    cartDrawer.setAttribute('aria-hidden', 'false');
+    cartOrb.setAttribute('aria-expanded', 'true');
+    cartDrawer.style.transform = '';
+  } else {
+    cartDrawer.classList.remove('open');
+    cartDrawer.setAttribute('aria-hidden', 'true');
+    cartOrb.setAttribute('aria-expanded', 'false');
+  }
+
+  // Status
+  if (OrbStore.statusOpen) {
+    statusDrawer.classList.add('open');
+    statusDrawer.setAttribute('aria-hidden', 'false');
+    statusOrb.setAttribute('aria-expanded', 'true');
+    statusDrawer.style.transform = '';
+  } else {
+    statusDrawer.classList.remove('open');
+    statusDrawer.setAttribute('aria-hidden', 'true');
+    statusOrb.setAttribute('aria-expanded', 'false');
+  }
+
+  // Global Backdrop & Scroll Lock (Agent 11 Anomaly Failsafes)
+  if (anyOpen) {
+    backdrop.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0 && !document.body.style.paddingRight) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+  } else {
+    backdrop.classList.remove('open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+  }
+}
+
+function handleOrbStateStyles(state) {
+  const statusGlow = document.querySelector('.status-glow');
+  const badge = document.getElementById('status-badge');
+  const emptyView = document.getElementById('status-empty');
+  const liveTracker = document.getElementById('live-tracker');
+  
+  if (state !== 'none' && state !== 'completed') {
+    statusGlow.classList.add('active');
+    badge.style.display = 'flex';
+    emptyView.style.display = 'none';
+    if(liveTracker) liveTracker.style.display = 'flex';
+  } else {
+    statusGlow.classList.remove('active');
+    badge.style.display = 'none';
+    if (state === 'none') {
+      emptyView.style.display = 'block';
+      if(liveTracker) liveTracker.style.display = 'none';
+    }
+  }
+}
 
 function renderMenu(filter) {
   const container = document.getElementById('menu-items');
@@ -132,7 +381,7 @@ function renderMenu(filter) {
         <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 6px;">${item.calories} cal</div>
         <div class="card-footer">
           <span class="price">₹${item.price}</span>
-          <button class="btn-add" id="add-btn-${item.id}" onclick="addToCart(${item.id}, this)">${qtyInCart > 0 ? `In Cart (${qtyInCart})` : 'Add'}</button>
+          <button class="btn-primary btn-add btn-magnetic" id="add-btn-${item.id}" onclick="addToCart(${item.id}, this)">${qtyInCart > 0 ? `Add (+${qtyInCart})` : 'Add'}</button>
         </div>
       </div>
     `;
@@ -141,6 +390,24 @@ function renderMenu(filter) {
 
   requestAnimationFrame(() => {
     container.querySelectorAll('.reveal').forEach(el => el.classList.add('active'));
+    
+    // Agent 2: Re-attach magnetic physics to new buttons
+    setupMagneticPhysics();
+  });
+}
+
+function setupMagneticPhysics() {
+  document.querySelectorAll('.btn-magnetic').forEach(btn => {
+    btn.addEventListener('mousemove', (e) => {
+      const rect = btn.getBoundingClientRect();
+      const x = e.clientX - rect.left - rect.width / 2;
+      const y = e.clientY - rect.top - rect.height / 2;
+      // Gentle pull mechanics
+      btn.style.transform = `translate(${x * 0.2}px, ${y * 0.2}px) scale(1.05)`;
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.transform = '';
+    });
   });
 }
 
@@ -159,9 +426,13 @@ function addToCart(id, btnEl) {
   if (btnEl) {
     btnEl.classList.add('added');
     btnEl.textContent = '✓ Added';
+    
+    // Agent 7: Flying Particle Collision Geometry
+    spawnMagneticParticle(btnEl);
+
     setTimeout(() => {
       btnEl.classList.remove('added');
-      btnEl.textContent = `In Cart (${cart[id].qty})`;
+      btnEl.textContent = `Add (+${cart[id].qty})`;
     }, 800);
   }
 
@@ -169,6 +440,41 @@ function addToCart(id, btnEl) {
   badge.classList.remove('badge-bounce');
   void badge.offsetWidth;
   badge.classList.add('badge-bounce');
+
+  // Cart Glow Pulse (Agent 2)
+  const cartGlow = document.querySelector('.cart-glow');
+  cartGlow.classList.remove('active');
+  void cartGlow.offsetWidth;
+  cartGlow.classList.add('active');
+  setTimeout(() => cartGlow.classList.remove('active'), 2000);
+}
+
+// ============================================
+// Agent 7: Choreography & Motion Particle Engine
+// ============================================
+function spawnMagneticParticle(buttonEl) {
+  const rect = buttonEl.getBoundingClientRect();
+  const cartOrb = document.getElementById('cart-orb').getBoundingClientRect();
+
+  const particle = document.createElement('div');
+  particle.className = 'add-particle';
+  
+  // Set initial coordinates
+  particle.style.left = `${rect.left + rect.width / 2}px`;
+  particle.style.top = `${rect.top + rect.height / 2}px`;
+  
+  document.body.appendChild(particle);
+
+  // Trigger animation next frame to target orb
+  requestAnimationFrame(() => {
+    particle.style.transform = `translate(${cartOrb.left - rect.left - rect.width / 2 + 15}px, ${cartOrb.top - rect.top - rect.height / 2 + 15}px) scale(0)`;
+  });
+
+  // Cleanup DOM
+  setTimeout(() => {
+    particle.remove();
+    AudioEngine.playSwoosh(); // subtle pop upon arrival
+  }, 600);
 }
 
 function removeFromCart(id) {
@@ -181,7 +487,7 @@ function removeFromCart(id) {
   const btn = document.getElementById(`add-btn-${id}`);
   if (btn) {
     const qty = cart[id] ? cart[id].qty : 0;
-    btn.textContent = qty > 0 ? `In Cart (${qty})` : 'Add';
+    btn.textContent = qty > 0 ? `Add (+${qty})` : 'Add';
   }
 }
 
@@ -190,7 +496,7 @@ function increaseQty(id) {
     cart[id].qty++;
     updateCartUI();
     const btn = document.getElementById(`add-btn-${id}`);
-    if (btn) btn.textContent = `In Cart (${cart[id].qty})`;
+    if (btn) btn.textContent = `Add (+${cart[id].qty})`;
   }
 }
 
@@ -198,51 +504,90 @@ function updateCartUI() {
   const cartContainer = document.getElementById('cart-items');
   const badge = document.getElementById('cart-badge');
   const totalEl = document.getElementById('cart-total');
+  const checkoutBtn = document.getElementById('checkout-btn');
 
   const items = Object.values(cart);
   let totalQty = 0;
   let totalPrice = 0;
 
-  cartContainer.innerHTML = '';
-
-  if (items.length === 0) {
-    cartContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 20px 0;">Your cart is empty.</p>';
-    badge.textContent = '0';
-    totalEl.textContent = '₹0';
-    return;
-  }
-
+  // 1. Calculate Totals first
   items.forEach(item => {
     totalQty += item.qty;
     totalPrice += item.price * item.qty;
-
-    const row = document.createElement('div');
-    row.className = 'cart-item-row';
-    row.innerHTML = `
-      <span class="cart-item-name">${item.name}</span>
-      <div class="cart-item-qty">
-        <button class="qty-btn" onclick="removeFromCart(${item.id})">−</button>
-        <span>${item.qty}</span>
-        <button class="qty-btn" onclick="increaseQty(${item.id})">+</button>
-      </div>
-      <span class="cart-item-price">₹${item.price * item.qty}</span>
-    `;
-    cartContainer.appendChild(row);
   });
 
-  badge.textContent = totalQty;
-  totalEl.textContent = '₹' + totalPrice;
+  // 2. Global UI updates
+  if (badge) badge.textContent = totalQty;
+  if (totalEl) totalEl.textContent = `₹${totalPrice}`;
+
+  if (checkoutBtn) {
+    const isEmpty = items.length === 0;
+    checkoutBtn.disabled = isEmpty;
+    checkoutBtn.style.opacity = isEmpty ? '0.5' : '1';
+    checkoutBtn.style.cursor = isEmpty ? 'not-allowed' : 'pointer';
+  }
+
+  // 3. Handle Empty State
+  if (items.length === 0) {
+    cartContainer.innerHTML = '<p class="cart-empty-fade" style="color: var(--text-muted); text-align: center; padding: 20px 0; margin: 0;">Your cart is empty.</p>';
+    return;
+  }
+
+  // 4. Remove Empty Message if present
+  cartContainer.querySelectorAll('.cart-empty-fade').forEach(el => el.remove());
+
+  // 5. Surgical Sync (Agent 1, 2, 5)
+  const activeIds = items.map(i => i.id.toString());
+  
+  // Clean up stale rows
+  const existingRows = Array.from(cartContainer.querySelectorAll('.cart-item-premium'));
+  existingRows.forEach(row => {
+    const rowId = row.getAttribute('data-id');
+    if (!activeIds.includes(rowId)) {
+      row.remove();
+    }
+  });
+
+  // Update or Create rows
+  items.forEach(item => {
+    const itemIdStr = item.id.toString();
+    let row = cartContainer.querySelector(`.cart-item-premium[data-id="${itemIdStr}"]`);
+    
+    if (row) {
+      // Just update values for existing row
+      row.querySelector('.cart-qty-num').textContent = item.qty;
+      row.querySelector('.cart-item-total').textContent = `₹${item.price * item.qty}`;
+    } else {
+      // Build new premium card
+      row = document.createElement('div');
+      row.className = 'cart-item-premium';
+      row.setAttribute('data-id', itemIdStr);
+      row.innerHTML = `
+        <div class="cart-image-wrapper">
+          <img src="${item.image}" class="cart-item-image">
+        </div>
+        <div class="cart-item-details">
+          <h4 class="cart-item-title">${item.name}</h4>
+          <span class="cart-item-unit-price">₹${item.price}</span>
+        </div>
+        <div class="cart-item-actions">
+          <span class="cart-item-total">₹${item.price * item.qty}</span>
+          <div class="cart-qty-pill">
+            <button class="cart-qty-btn" onclick="removeFromCart(${item.id})">−</button>
+            <span class="cart-qty-num">${item.qty}</span>
+            <button class="cart-qty-btn" onclick="increaseQty(${item.id})">+</button>
+          </div>
+        </div>
+      `;
+      cartContainer.appendChild(row);
+    }
+  });
 }
 
-function submitOrder() {
+async function submitOrder() {
   const items = Object.values(cart);
   if (items.length === 0) {
-    const btn = document.getElementById('checkout-btn');
-    btn.style.transform = 'translateX(-5px)';
-    setTimeout(() => btn.style.transform = 'translateX(5px)', 100);
-    setTimeout(() => btn.style.transform = 'translateX(-3px)', 200);
-    setTimeout(() => btn.style.transform = 'translateX(0)', 300);
-    return;
+    return; // Agent 4: Do nothing, button is natively disabled via updateCartUI
   }
 
   // Get the current table from the selector
@@ -261,13 +606,24 @@ function submitOrder() {
     timestamp: new Date().toISOString()
   };
 
-  let orders = JSON.parse(localStorage.getItem('auraOrders') || '[]');
-  orders.push(order);
-  localStorage.setItem('auraOrders', JSON.stringify(orders));
+  try {
+    await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(order)
+    });
+  } catch(err) {
+    console.error("Failed to submit order", err);
+  }
 
   cart = {};
   updateCartUI();
-  document.getElementById('cart-panel').classList.remove('active');
+  
+  // Agent 8: Seamlessly route checkout to the status pipeline
+  OrbStore.cartOpen = false;
+  setTimeout(() => {
+    OrbStore.statusOpen = true;
+  }, 400);
 
   const overlay = document.getElementById('success-overlay');
   overlay.classList.add('active');
@@ -294,13 +650,22 @@ function startStatusPolling() {
   }, 2000);
 }
 
-function checkOrderStatus() {
+async function checkOrderStatus() {
   if (!currentOrderId) return;
-  const orders = JSON.parse(localStorage.getItem('auraOrders') || '[]');
-  const myOrder = orders.find(o => o.id === currentOrderId);
+  
+  try {
+    const res = await fetch(`/api/orders/${currentOrderId}`);
+    if (!res.ok) return;
+    const myOrder = await res.json();
 
-  if (myOrder && myOrder.status) {
-    showTracker(myOrder.status);
+    if (myOrder && myOrder.status) {
+      if (OrbStore.orderState !== myOrder.status) {
+        OrbStore.orderState = myOrder.status; // Mutate proxy
+      }
+      showTracker(myOrder.status);
+    }
+  } catch (e) {
+    console.error("Error fetching order status", e);
   }
 }
 
@@ -355,24 +720,29 @@ function showTracker(status) {
     completed: 'var(--text-muted)'
   };
 
-  // Update step circles
+  // Update step circles (Agent 8 Photograph System)
   document.querySelectorAll('.tracker-step').forEach(step => {
     const stepName = step.dataset.step;
     const stepIndex = stepOrder.indexOf(stepName);
     const circle = step.querySelector('.step-circle');
+    const img = step.querySelector('.step-img');
 
     if (stepIndex <= currentIndex) {
       // Active/completed step
-      circle.style.background = stepColors[stepName];
-      circle.style.color = 'white';
-      circle.style.border = 'none';
-      circle.style.boxShadow = `0 0 12px ${stepColors[stepName]}`;
+      circle.style.border = `2px solid ${stepColors[stepName]}`;
+      circle.style.boxShadow = `0 0 16px ${stepColors[stepName]}`;
+      if(img) {
+        img.style.opacity = '1';
+        img.style.filter = 'none';
+      }
     } else {
       // Inactive step
-      circle.style.background = 'var(--bg-surface)';
-      circle.style.color = 'var(--text-dim)';
       circle.style.border = '2px solid var(--glass-border)';
       circle.style.boxShadow = 'none';
+      if(img) {
+        img.style.opacity = '0.4';
+        img.style.filter = 'grayscale(80%)';
+      }
     }
   });
 

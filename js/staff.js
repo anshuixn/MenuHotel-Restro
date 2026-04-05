@@ -4,37 +4,38 @@
 // + Kanban Board + Real-Time Sync
 // ============================================
 
-// ---- DEFAULT ESTABLISHMENT KEY ----
-// Admin can change this at any time via the Employee Management panel.
-// Stored in localStorage so it persists. Defaults to 'AURA2024' if not set.
-function getEstablishmentKey() {
-  return localStorage.getItem('auraEstablishmentKey') || 'AURA2024';
-}
-function setEstablishmentKey(newKey) {
-  localStorage.setItem('auraEstablishmentKey', newKey);
-}
-
-// ---- Default Staff Accounts (built-in, cannot be deleted) ----
-const DEFAULT_ACCOUNTS = [
-  { id: 'STAFF001', password: 'aura2024', name: 'Chef Rajan', role: 'Chef' },
-  { id: 'STAFF002', password: 'spice2024', name: 'Manager Priya', role: 'Manager' },
-  { id: 'STAFF003', password: 'kitchen2024', name: 'Sous Chef Arjun', role: 'Sous Chef' },
-  { id: 'admin', password: 'admin', name: 'Administrator', role: 'Admin' },
-];
-
-// ---- Merge defaults + registered accounts ----
-function getAllAccounts() {
-  const registered = JSON.parse(localStorage.getItem('auraStaffAccounts') || '[]');
-  const merged = [...DEFAULT_ACCOUNTS];
-  registered.forEach(reg => {
-    const exists = merged.find(a => a.id.toLowerCase() === reg.id.toLowerCase());
-    if (!exists) merged.push(reg);
-  });
-  return merged;
+// ---- SERVER-SIDE KEY ONLY ACCESSIBLE BY ADMIN (for UI display) ----
+async function getEstablishmentKey() {
+  try {
+    const res = await fetch('/api/key');
+    const data = await res.json();
+    return data.key || 'Hidden';
+  } catch (e) {
+    return 'Hidden';
+  }
 }
 
-function getRegisteredAccounts() {
-  return JSON.parse(localStorage.getItem('auraStaffAccounts') || '[]');
+async function setEstablishmentKey(newKey) {
+  try {
+    await fetch('/api/key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: newKey })
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ==== Default accounts removed — handled purely server-side now ====
+
+async function getRegisteredAccounts() {
+  try {
+    const res = await fetch('/api/staff');
+    return await res.json();
+  } catch(e) {
+    return [];
+  }
 }
 
 let previousOrderCount = 0;
@@ -67,30 +68,36 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---- SIGN IN ----
-  document.getElementById('signin-form').addEventListener('submit', (e) => {
+  document.getElementById('signin-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const staffId = document.getElementById('staff-id').value.trim();
     const password = document.getElementById('staff-pass').value;
     const errorEl = document.getElementById('signin-error');
 
-    const accounts = getAllAccounts();
-    const match = accounts.find(
-      s => s.id.toLowerCase() === staffId.toLowerCase() && s.password === password
-    );
+    try {
+      const res = await fetch('/api/staff/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: staffId, password: password })
+      });
+      const data = await res.json();
 
-    if (match) {
-      currentStaff = match;
-      sessionStorage.setItem('auraStaffSession', JSON.stringify(match));
-      errorEl.textContent = '';
-      unlockDashboard(match.name, match.id);
-    } else {
-      errorEl.textContent = '❌ Invalid Staff ID or Password';
-      shakeLoginCard();
+      if (data.success) {
+        currentStaff = data.account;
+        sessionStorage.setItem('auraStaffSession', JSON.stringify(data.account));
+        errorEl.textContent = '';
+        unlockDashboard(data.account.name, data.account.id);
+      } else {
+        errorEl.textContent = `❌ ${data.message}`;
+        shakeLoginCard();
+      }
+    } catch(e) {
+      errorEl.textContent = '❌ Network Error';
     }
   });
 
   // ---- REGISTER (KEY-GATED) ----
-  document.getElementById('register-form').addEventListener('submit', (e) => {
+  document.getElementById('register-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('reg-name').value.trim();
     const staffId = document.getElementById('reg-id').value.trim();
@@ -116,24 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // VERIFY ESTABLISHMENT KEY
-    const correctKey = getEstablishmentKey();
-    if (key !== correctKey) {
-      errorEl.textContent = '🔑 Invalid Establishment Key — contact your admin';
-      shakeLoginCard();
-      return;
-    }
-
-    // Check for duplicate ID
-    const accounts = getAllAccounts();
-    if (accounts.find(a => a.id.toLowerCase() === staffId.toLowerCase())) {
-      errorEl.textContent = '❌ This Staff ID is already taken';
-      shakeLoginCard();
-      return;
-    }
-
-    // Save
-    const registered = getRegisteredAccounts();
+    // Save (Key is now strictly verified backend only!)
     const newAccount = {
       id: staffId,
       password: password,
@@ -141,8 +131,24 @@ document.addEventListener('DOMContentLoaded', () => {
       role: 'Staff',
       registeredAt: new Date().toISOString()
     };
-    registered.push(newAccount);
-    localStorage.setItem('auraStaffAccounts', JSON.stringify(registered));
+    
+    try {
+      const res = await fetch('/api/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: newAccount, key: key })
+      });
+      const data = await res.json();
+      
+      if (!data.success) {
+        errorEl.textContent = data.message;
+        shakeLoginCard();
+        return;
+      }
+    } catch(e) {
+      errorEl.textContent = '❌ Network error';
+      return;
+    }
 
     successEl.textContent = `✅ Account created! Sign in with ID: ${staffId}`;
     document.getElementById('reg-name').value = '';
@@ -175,13 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('employee-modal').addEventListener('click', (e) => {
     if (e.target === document.getElementById('employee-modal')) closeEmployeeModal();
   });
-  document.getElementById('change-key-btn').addEventListener('click', () => {
+  
+  document.getElementById('change-key-btn').addEventListener('click', async () => {
     const newKey = document.getElementById('new-est-key').value.trim();
     if (!newKey || newKey.length < 4) {
       alert('Key must be at least 4 characters.');
       return;
     }
-    setEstablishmentKey(newKey);
+    await setEstablishmentKey(newKey);
     document.getElementById('current-est-key').textContent = newKey;
     document.getElementById('new-est-key').value = '';
   });
@@ -208,9 +215,9 @@ function unlockDashboard(staffName, staffId) {
 // ============================================
 // EMPLOYEE MANAGEMENT
 // ============================================
-function openEmployeeModal() {
-  renderEmployeeTable();
-  document.getElementById('current-est-key').textContent = getEstablishmentKey();
+async function openEmployeeModal() {
+  await renderEmployeeTable();
+  document.getElementById('current-est-key').textContent = await getEstablishmentKey();
   document.getElementById('employee-modal').classList.add('active');
 }
 
@@ -218,25 +225,15 @@ function closeEmployeeModal() {
   document.getElementById('employee-modal').classList.remove('active');
 }
 
-function renderEmployeeTable() {
-  // Default accounts table
-  const defaultBody = document.getElementById('default-emp-body');
-  defaultBody.innerHTML = '';
-  DEFAULT_ACCOUNTS.forEach(acc => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td style="color: var(--text-light); font-weight: 500;">${acc.name}</td>
-      <td><code style="background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; font-size: 0.85rem;">${acc.id}</code></td>
-      <td><span class="emp-badge-default">${acc.role}</span></td>
-      <td><button class="emp-remove-btn" disabled title="Built-in accounts cannot be removed">Protected</button></td>
-    `;
-    defaultBody.appendChild(tr);
-  });
+async function renderEmployeeTable() {
+  // Removed defaults render list here because they are secluded on the server.
+  // Instead, just note it on the UI for admins.
+  defaultBody.innerHTML = '<tr><td colspan="4" class="emp-empty" style="padding: 1rem;">Administrators and built-in Chef roles are hidden and securely protected on the server layer.</td></tr>';
 
   // Registered accounts table
   const customBody = document.getElementById('custom-emp-body');
   customBody.innerHTML = '';
-  const registered = getRegisteredAccounts();
+  const registered = await getRegisteredAccounts();
 
   if (registered.length === 0) {
     customBody.innerHTML = '<tr><td colspan="4" class="emp-empty">No registered employees yet</td></tr>';
@@ -258,17 +255,16 @@ function renderEmployeeTable() {
   });
 }
 
-function removeEmployee(index) {
-  const registered = getRegisteredAccounts();
+async function removeEmployee(index) {
+  const registered = await getRegisteredAccounts();
   const emp = registered[index];
   if (!emp) return;
 
   const confirmed = confirm(`Remove "${emp.name}" (${emp.id}) from the employee list?\n\nThey will no longer be able to sign in.`);
   if (!confirmed) return;
 
-  registered.splice(index, 1);
-  localStorage.setItem('auraStaffAccounts', JSON.stringify(registered));
-  renderEmployeeTable();
+  await fetch(`/api/staff/${index}`, { method: 'DELETE' });
+  await renderEmployeeTable();
 }
 
 // ============================================
@@ -280,13 +276,10 @@ function initKanban() {
   renderKanban();
   setupDragAndDrop();
 
+  // Poll for orders every 2s
   pollInterval = setInterval(() => {
     if (!clearPending) renderKanban();
-  }, 1000);
-
-  window.addEventListener('storage', () => {
-    if (!clearPending) renderKanban();
-  });
+  }, 2000);
 
   // Clear all — two-click confirm
   const clearBtn = document.getElementById('clear-all-btn');
@@ -294,12 +287,12 @@ function initKanban() {
   const newClearBtn = clearBtn.cloneNode(true);
   clearBtn.parentNode.replaceChild(newClearBtn, clearBtn);
 
-  newClearBtn.addEventListener('click', () => {
+  newClearBtn.addEventListener('click', async () => {
     if (clearPending) {
       clearPending = false;
-      localStorage.removeItem('auraOrders');
+      await fetch('/api/orders', { method: 'DELETE' });
       previousOrderCount = 0;
-      renderKanban();
+      await renderKanban();
       newClearBtn.textContent = 'Clear All';
       newClearBtn.style.background = 'transparent';
       newClearBtn.style.color = '#ff4757';
@@ -319,20 +312,35 @@ function initKanban() {
   });
 }
 
-function renderKanban() {
-  const orders = JSON.parse(localStorage.getItem('auraOrders') || '[]');
+async function renderKanban() {
+  let orders = [];
+  try {
+    const res = await fetch('/api/orders');
+    orders = await res.json();
+  } catch(e) {}
+  
   const lists = ['new', 'cooking', 'ready', 'completed'];
-  lists.forEach(s => { document.getElementById(`list-${s}`).innerHTML = ''; });
+  lists.forEach(s => { 
+    const el = document.getElementById(`list-${s}`);
+    if(el) el.innerHTML = ''; 
+  });
+  
   const counts = { new: 0, cooking: 0, ready: 0, completed: 0 };
   const sorted = [...orders].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   sorted.forEach(order => {
     if (!order.status) order.status = 'new';
-    counts[order.status]++;
-    document.getElementById(`list-${order.status}`).appendChild(createOrderCard(order));
+    if(counts[order.status] !== undefined) {
+      counts[order.status]++;
+      const listEl = document.getElementById(`list-${order.status}`);
+      if(listEl) listEl.appendChild(createOrderCard(order));
+    }
   });
 
-  lists.forEach(s => { document.getElementById(`count-${s}`).textContent = counts[s]; });
+  lists.forEach(s => { 
+    const countEl = document.getElementById(`count-${s}`);
+    if(countEl) countEl.textContent = counts[s]; 
+  });
 
   if (orders.length > previousOrderCount && previousOrderCount > 0) playNotificationSound();
   previousOrderCount = orders.length;
@@ -368,9 +376,9 @@ function createOrderCard(order) {
   return card;
 }
 
-function moveOrder(id, newStatus) {
-  updateOrderStatus(id, newStatus);
-  renderKanban();
+async function moveOrder(id, newStatus) {
+  await updateOrderStatus(id, newStatus);
+  await renderKanban();
 }
 
 function setupDragAndDrop() {
@@ -390,19 +398,27 @@ function setupDragAndDrop() {
     const list = col.querySelector('.kanban-cards');
     col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drag-over'); });
     col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove('drag-over'); });
-    col.addEventListener('drop', (e) => {
-      e.preventDefault(); col.classList.remove('drag-over');
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault(); 
+      col.classList.remove('drag-over');
       const orderId = e.dataTransfer.getData('text/plain');
       const newStatus = list.dataset.status;
-      if (orderId && newStatus) { updateOrderStatus(orderId, newStatus); renderKanban(); }
+      if (orderId && newStatus) { 
+        await updateOrderStatus(orderId, newStatus); 
+        await renderKanban();
+      }
     });
   });
 }
 
-function updateOrderStatus(id, newStatus) {
-  let orders = JSON.parse(localStorage.getItem('auraOrders') || '[]');
-  const idx = orders.findIndex(o => o.id === id);
-  if (idx > -1) { orders[idx].status = newStatus; localStorage.setItem('auraOrders', JSON.stringify(orders)); }
+async function updateOrderStatus(id, newStatus) {
+  try {
+    await fetch(`/api/orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+  } catch(e) {}
 }
 
 function playNotificationSound() {
